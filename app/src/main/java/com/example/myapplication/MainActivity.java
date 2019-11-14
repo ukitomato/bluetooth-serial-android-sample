@@ -16,8 +16,8 @@ import com.google.android.material.snackbar.Snackbar;
 
 public class MainActivity extends AppCompatActivity implements BluetoothSerial.BluetoothSerialListenerInterface {
     BluetoothSerial bluetoothSerial;
-    private final String DEVICE_NAME = "M5StickC";
-    private final String TAG = "MainActivity";
+    private static final String DEVICE_NAME = "M5StickC";
+    private static final String TAG = "MainActivity";
     TextView textView;
     Handler handler;
 
@@ -65,17 +65,17 @@ public class MainActivity extends AppCompatActivity implements BluetoothSerial.B
     }
 
     @Override
-    public void onSerialReceive() {
+    public void onSerialReceive(final String text) {
         handler.post(
                 new Runnable() {
                     @Override
                     public void run() {
-                        textView.setText(bluetoothSerial.receive());
+                        textView.setText(text);
                     }
                 }
         );
 
-        Log.d("MainActivity", bluetoothSerial.receive());
+        Log.d("MainActivity", text);
     }
 
     @Override

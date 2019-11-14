@@ -1,12 +1,10 @@
-package com.example.myapplication; // 適当なものに変更
+package com.example.myapplication;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
-import android.os.Build;
-
-import androidx.annotation.RequiresApi;
+import android.util.Log;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,60 +16,52 @@ import java.util.UUID;
 
 /**
  * Android Activity
- *
+ * <p>
  * 1. ActivityクラスにBluetoothSerialListenerInterfaceをimplements
- *
+ * <p>
  * 2. BluetoothSerialインスタンス生成
- *
- *      BluetoothSerial bluetoothSerial;
- *      private final String DEVICE_NAME = "hogehoge"; // 自分のBluetoothデバイス名
- *      onCreate(){
- *          bluetoothSerial = new BluetoothSerial(DEVICE_NAME, this);
- *      }
- *
- *      @Override
- *      protected void onDestroy() {
- *         super.onDestroy();
- *         bluetoothSerial.disconnect();
- *      }
- *
- *      @Override
- *      public void onSerialReceive() {
- *          // 受信したときにやりたい処理
- *          String receiveMessage = bluetoothSerial.receive();
- *      }
- *
- *
- *     ************* Option **************
- *     バックグラウンドで処理させたくない場合は
- *     @Override
- *     protected void onStop() {
- *         super.onStop();
- *         bluetoothSerial.disconnect();
- *     }
- *
- *     @Override
- *     protected void onResume() {
- *         super.onResume();
- *         bluetoothSerial.reconnect();
- *     }
- *
- *     ***********************************
- *
+ * <p>
+ *  BluetoothSerial bluetoothSerial;
+ *  private final String DEVICE_NAME = "hogehoge"; // 自分のBluetoothデバイス名
+ *  onCreate(){
+ *      bluetoothSerial = new BluetoothSerial(DEVICE_NAME, this);
+ *  }
+ * <p>
+ *  void onDestroy() {
+ *  super.onDestroy();
+ *      bluetoothSerial.disconnect();
+ *  }
+ * <p>
+ *  public void onSerialReceive() {
+ *      // 受信したときにやりたい処理
+ *      String receiveMessage = bluetoothSerial.receive();
+ *  }
+ * <p>
+ * <p>
+ * ************* Option **************
+ * バックグラウンドで処理させたくない場合は
+ *  void onStop() {
+ *      super.onStop();
+ *      bluetoothSerial.disconnect();
+ *  }
+ *  void onResume() {
+ *      super.onResume();
+ *      bluetoothSerial.reconnect();
+ *  }
+ * <p>
+ * ***********************************
+ * <p>
  * 3. 受信する文字列には，必ず終端文字（"\n"）を入れる
- *
  */
 class BluetoothSerial {
 
     private static final String SSP_UUID = "00001101-0000-1000-8000-00805F9B34FB";
-
+    private static final String TAG = "BluetoothSerial";
     private BluetoothSocket btSocket = null; //ソケット情報を格納する
     private OutputStream outputStream = null; //出力ストリーム
     private BluetoothServer btServer = null;
 
     private BluetoothSerialListenerInterface listener = null;
-
-    private String receiveString;//受け取った文字
 
     private String deviceName;
 
@@ -79,30 +69,61 @@ class BluetoothSerial {
 
     private Context context;
 
-    //    コンストラクタの定義
-    //
-    //    con：ActivityのContext
+    private boolean shoudInit = true;
+
+    /**
+     * @param deviceName Bluetoothデバイス名
+     * @param context    BluetoothSerialListenerInterfaceをimplementsをしたActivity
+     */
     BluetoothSerial(String deviceName, Context context) {
+        this(deviceName, context, false);
+    }
+
+    /**
+     * 自分のタイミングでデバイスにつなぎたい場合，lateStart = true にする
+     *
+     * @param deviceName Bluetoothデバイス名
+     * @param context    BluetoothSerialListenerInterfaceをimplementsをしたActivity
+     * @param lateStart  インスタンス時に接続させたくないときにtrue
+     */
+    BluetoothSerial(String deviceName, Context context, boolean lateStart) {
         this.deviceName = deviceName;
         this.context = context;
-
-        init();
+        if (!lateStart) {
+            init();
+        }
     }
 
-    private void init() {
+
+    /**
+     * 初期化
+     * @return 初期化結果
+     */
+    boolean init() {
         // デバイス探索
         device = searchDevice();
-
-        //ソケットを確立する関数
-        connect(device);
-        //ソケットが取得出来たら、出力用ストリームを作成する
-        if (btSocket != null) {
-            btServer = new BluetoothServer(btSocket);
-            btServer.start();
+        if (device == null) {
+            Log.d(TAG, "Can't find " + deviceName+". Please pairing first");
+            return false;
         }
+        // ソケットを確立する関数
+        if (!connect(device)) return false;
+
+        // ソケットが取得出来たら、出力用ストリームを作成する
+        btServer = new BluetoothServer(btSocket);
+        btServer.start();
+        // リスナ設定
         setListener();
+        shoudInit = false;
+
+        return true;
     }
 
+    /**
+     * デバイス検索
+     *
+     * @return 使用するBluetoothDevice
+     */
     private BluetoothDevice searchDevice() {
         //BTアダプタのインスタンスを取得
         //Bluetooth通信を行うために必要な情報を格納する
@@ -119,54 +140,91 @@ class BluetoothSerial {
         return btDevice;
     }
 
-    // 接続
-    private void connect(BluetoothDevice bluetoothDevice) {
+    /**
+     * 接続
+     *
+     * @param bluetoothDevice 使用するデバイス
+     * @return 結果
+     */
+    private boolean connect(BluetoothDevice bluetoothDevice) {
         //ソケットの設定
         try {
             btSocket = bluetoothDevice.createRfcommSocketToServiceRecord(UUID.fromString(SSP_UUID));
             btSocket.connect();
             outputStream = btSocket.getOutputStream();
+            return true;
         } catch (IOException e) {
             btSocket = null;
+            Log.d(TAG, "Can't establish socket connection to " + deviceName);
+            return false;
         }
     }
 
-    // 再接続
-    void reconnect() {
-        if (btSocket == null) {
-            connect(device);
-            btServer = new BluetoothServer(btSocket);
-            btServer.start();
-            setListener();
+    /**
+     * 再接続
+     * @return 結果
+     */
+    boolean reconnect() {
+        if (!shoudInit) {
+            if (btSocket == null) {
+                // 接続
+                if (!connect(device)) return false;
+                // サーバ作成
+                btServer = new BluetoothServer(btSocket);
+                btServer.start();
+                // リスナ設定
+                setListener();
+                return true;
+            }
+        } else {
+            Log.d(TAG, "Please call init() first");
+            return false;
+        }
+        return false;
+    }
+
+    /**
+     * 切断
+     * @return 結果
+     */
+    boolean disconnect() {
+        if (!shoudInit) {
+            try {
+                btServer.interrupt();
+                btServer = null;
+                btSocket.close();
+                btSocket = null;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return false;
+            }
+            removeListener();
+            return true;
+        } else {
+            Log.d(TAG, "Please call init() first");
+            return false;
         }
     }
 
-    // 切断
-    void disconnect() {
-        btServer.interrupt();
-        btServer = null;
-        try {
-            btSocket.close();
-            btSocket = null;
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        removeListener();
-    }
-
-
-    //  リスナを作製
+    /**
+     * リスナ生成
+     */
     private void setListener() {
         this.listener = (BluetoothSerialListenerInterface) context;
     }
 
-    //  リスナを削除
+    /**
+     * リスナ削除
+     */
     private void removeListener() {
         this.listener = null;
     }
 
-    //  送信メソッド
+    /**
+     * デバイスへ送信
+     *
+     * @param str 送信文字列
+     */
     void send(String str) {
         //文字列を送信する
         byte[] bytes;
@@ -181,23 +239,23 @@ class BluetoothSerial {
         }
     }
 
-    //  受信した文字列を返すメソッド
-    String receive() {
-        return receiveString;
-    }
-
-
-    //  Bluetoothサーバクラス
+    /**
+     * BluetoothServerクラス
+     * <p>
+     * デバイスとの送受信を行うThread
+     */
     public class BluetoothServer extends Thread {
         InputStream mInputStream;
 
-        //コンストラクタの定義
+        /**
+         * コンストラクタ
+         *
+         * @param socket Bluetoothデバイスのソケット
+         */
         BluetoothServer(BluetoothSocket socket) {
-            //各種初期化
-            //サーバー側の処理
             InputStream tmpIn = null;
             try {
-                //自デバイスのBluetoothサーバーソケットの取得
+                // ソケットのStream取得
                 tmpIn = socket.getInputStream();
             } catch (IOException e) {
                 e.printStackTrace();
@@ -205,11 +263,13 @@ class BluetoothSerial {
             mInputStream = tmpIn;
         }
 
-        //受信を繰り返す
-        @RequiresApi(api = Build.VERSION_CODES.O)
+        /**
+         * 受信処理
+         * - 受信時：受信文字列をリスナに通知
+         */
         public void run() {
             byte[] buf;
-            String rcvStr;
+            String receiveText;
             while (true) {
                 int tmpBuf;
                 try {
@@ -220,13 +280,12 @@ class BluetoothSerial {
                 }
                 // 取得文字数判定
                 if (tmpBuf > 0) {
-                    rcvStr = new String(buf);
-                    rcvStr = rcvStr.split("\n")[0];
+                    receiveText = new String(buf);
+                    receiveText = receiveText.split("\n")[0];
 
                     // 通知 (onSerialReceive)
-                    receiveString = rcvStr;
                     if (listener != null) {
-                        listener.onSerialReceive();
+                        listener.onSerialReceive(receiveText);
                     }
 
                 }
@@ -237,6 +296,8 @@ class BluetoothSerial {
 
 
     public interface BluetoothSerialListenerInterface extends EventListener {
-        void onSerialReceive();
+        void onSerialReceive(String text);
     }
+
+
 }
