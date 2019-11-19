@@ -1,4 +1,4 @@
-package com.example.myapplication;
+package com.example.bluetoothserial;
 
 import android.os.Bundle;
 import android.os.Handler;
