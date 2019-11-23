@@ -92,7 +92,7 @@ class BluetoothSerial {
         this.deviceName = deviceName;
         this.context = context;
         if (manualStart) {
-            this.statusCode = Status.MANUAL_INITIALIZE;
+            this.statusCode = Status.MANUAL_START;
         } else {
             this.statusCode = Status.NOT_INITIALIZE;
             init();
@@ -106,20 +106,8 @@ class BluetoothSerial {
      * @return 初期化結果
      */
     private boolean init() {
-        // デバイス探索
-        if (!searchDevice()) return false;
-
         // ソケットを確立する関数
-        if (!connect(device)) return false;
-
-        // ソケットが取得出来たら、出力用ストリームを作成する
-        btServer = new BluetoothServer(btSocket);
-        btServer.start();
-        // リスナ設定
-        setListener();
-        statusCode = Status.CONNECTING;
-        Log.d(TAG, "Connected");
-        return true;
+        return connect();
     }
 
     /**
@@ -151,24 +139,36 @@ class BluetoothSerial {
 
     /**
      * 接続
-     *
-     * @param bluetoothDevice 使用するデバイス
      * @return 結果
      */
-    private boolean connect(BluetoothDevice bluetoothDevice) {
-        //ソケットの設定
+    boolean connect() {
+        if (device == null)
+            searchDevice();
+
         try {
-            btSocket = bluetoothDevice.createRfcommSocketToServiceRecord(UUID.fromString(SSP_UUID));
+            //ソケットの設定
+            btSocket = device.createRfcommSocketToServiceRecord(UUID.fromString(SSP_UUID));
             btSocket.connect();
             outputStream = btSocket.getOutputStream();
             statusCode = Status.SOCKET_ESTABLISHED;
             Log.d(TAG, "Established socket connection to " + deviceName);
+
+            // ソケットが取得出来たら、出力用ストリームを作成する
+            btServer = new BluetoothServer(btSocket);
+            btServer.start();
+
+            // リスナ設定
+            setListener();
+
+            statusCode = Status.CONNECTING;
+            Log.d(TAG, "Connected");
             return true;
         } catch (IOException e) {
             btSocket = null;
             Log.d(TAG, "Can't establish socket connection to " + deviceName);
             statusCode = Status.CANT_SOCKET_ESTABLISH;
             return false;
+
         }
     }
 
@@ -179,19 +179,14 @@ class BluetoothSerial {
      */
     boolean reconnect() {
         switch (statusCode) {
-            case Status.MANUAL_INITIALIZE:
+            case Status.MANUAL_START:
                 Log.d(TAG, "Please call init() first");
                 return false;
             case Status.NOT_INITIALIZE:
                 return init();
             case Status.DISCONNECTED:
                 // 接続
-                if (!connect(device)) return false;
-                // サーバ作成
-                btServer = new BluetoothServer(btSocket);
-                btServer.start();
-                // リスナ設定
-                setListener();
+                if (!connect()) return false;
                 Log.d(TAG, "Reconnected");
                 return true;
             default:
@@ -332,8 +327,8 @@ class BluetoothSerial {
     }
 
     public class Status {
-        static final int MANUAL_INITIALIZE = 0;
-        static final int NOT_INITIALIZE = 1;
+        static final int NOT_INITIALIZE = 0;
+        static final int MANUAL_START = 1;
         static final int SOCKET_ESTABLISHED = 2;
         static final int CONNECTING = 3;
         static final int DISCONNECTED = 4;
